@@ -1,0 +1,6 @@
+framework module NNNetKit {
+  umbrella header "NNNetKit-umbrella.h"
+
+  export *
+  module * { export * }
+}

@@ -62,10 +62,10 @@
 		790F30AB6144CCD89077907C /* Pods_NNNetKit_Example.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NNNetKit_Example.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		873B8AEA1B1F5CCA007FD442 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = Main.storyboard; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		90E9533CDEE5CF7590AF8F33 /* Pods-NNNetKit_Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NNNetKit_Example.debug.xcconfig"; path = "Pods/Target Support Files/Pods-NNNetKit_Example/Pods-NNNetKit_Example.debug.xcconfig"; sourceTree = "<group>"; };
-		927FABE617856774A4A5B0EF /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; name = README.md; path = ../README.md; sourceTree = "<group>"; };
+		927FABE617856774A4A5B0EF /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../README.md; sourceTree = "<group>"; };
 		C29E387ED9949E6D8BDF2B78 /* Pods-NNNetKit_Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NNNetKit_Example.release.xcconfig"; path = "Pods/Target Support Files/Pods-NNNetKit_Example/Pods-NNNetKit_Example.release.xcconfig"; sourceTree = "<group>"; };
-		C90DA5FBE7F86A0B5AB07CA2 /* NNNetKit.podspec */ = {isa = PBXFileReference; includeInIndex = 1; name = NNNetKit.podspec; path = ../NNNetKit.podspec; sourceTree = "<group>"; };
-		E52CEE5F844B4604E7456EB1 /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; name = LICENSE; path = ../LICENSE; sourceTree = "<group>"; };
+		C90DA5FBE7F86A0B5AB07CA2 /* NNNetKit.podspec */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = NNNetKit.podspec; path = ../NNNetKit.podspec; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		E52CEE5F844B4604E7456EB1 /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = LICENSE; path = ../LICENSE; sourceTree = "<group>"; };
 		F2999D8581E653EE4844F313 /* Pods_NNNetKit_Tests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NNNetKit_Tests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -301,10 +301,16 @@
 			);
 			inputPaths = (
 				"${SRCROOT}/Pods/Target Support Files/Pods-NNNetKit_Example/Pods-NNNetKit_Example-frameworks.sh",
+				"${BUILT_PRODUCTS_DIR}/AFNetworking/AFNetworking.framework",
+				"${BUILT_PRODUCTS_DIR}/FMDB/FMDB.framework",
+				"${BUILT_PRODUCTS_DIR}/MJExtension/MJExtension.framework",
 				"${BUILT_PRODUCTS_DIR}/NNNetKit/NNNetKit.framework",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/AFNetworking.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FMDB.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/MJExtension.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/NNNetKit.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
