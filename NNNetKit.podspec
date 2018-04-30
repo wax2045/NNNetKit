@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'NNNetKit'
-  s.version          = '0.0.1'
+  s.version          = '0.0.2'
   s.summary          = 'A short description of NNNetKit.'
 
 # This description is used to generate tags and improve search results.
@@ -23,7 +23,7 @@ TODO: Add long description of the pod here.
   s.homepage         = 'https://github.com/wax2045/NNNetKit'
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
-  s.author           = { 'FWDevelop' => 'apple@szfwjf.cn' }
+  s.author           = { 'wax2045' => '861412028@qq.com' }
   s.source           = { :git => 'https://github.com/wax2045/NNNetKit.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
