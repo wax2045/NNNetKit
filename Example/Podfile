@@ -1,0 +1,11 @@
+use_frameworks!
+
+target 'NNNetKit_Example' do
+  pod 'NNNetKit', :path => '../'
+
+  target 'NNNetKit_Tests' do
+    inherit! :search_paths
+
+    
+  end
+end
