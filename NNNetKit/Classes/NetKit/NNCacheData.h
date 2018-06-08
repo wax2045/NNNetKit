@@ -23,7 +23,7 @@
  @param tableName 数据库表名称
  @param IDPropertysNameArr 普通比较 判断是否存在 这个参数是固定的
  @param compareChangeRefrshPropertysNameArr 深度比较 判断是否有变化 用于动态更新数据库
- @param complete 数据库更新状态
+ @param complete 数据库更新状态 引入class会更加安全的创建数据库 已经有了，如果是模型的话自动使用class
  */
 + (void)NNUpdata:(id)data
        tableName:(NSString *)tableName
@@ -66,4 +66,5 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
              sortSqlString:(NSString *)sortSqlString
          pickDataClassName:(NSString *)pickDataClassName
                   complete:(void(^)(NSArray *dataArr))complete;
+
 @end

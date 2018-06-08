@@ -11,12 +11,8 @@
  2018/01/08 添加数据库删除功能
  2018/02/09 更新数据库的对数据存储结构，解决已数字参数排序出现乱序的问题
  2018/02/17 解决丢失父类字段问题
- 
- 
- 
- 
- 
- 
+ 2018/06/07 新增快速稳定添加方法 但是比较繁琐 废弃使用太麻烦
+ 2018/06/08 缓存所有语句，因为上线后不可能会有动态变化sql的情况 通过userdefault+内存缓存
  */
 #import "NNCacheData.h"
 #import "FMDB.h"
@@ -30,39 +26,100 @@
 #define SQL_REAL     @"REAL" //浮点
 #define SQL_BLOB     @"BLOB" //data
 #define SQL_BOOL     @"BOOL" //data
-#define NNDB ((NNCacheData *)[self shareManager]).db
+
+#define NNAllTablesNameUserDefault @"NNAllTablesNameUserDefault"
+
+//通过tableName获取insertUserdefaultKey
+#define NNCacheGetInsertSQLStringKey(table)         [@"NNCacheGetInsertSQLString" stringByAppendingString:table]
+#define NNCacheGetInsertSQLKeysKey(table)           [@"NNCacheGetInsertSQLKeys" stringByAppendingString:table]
+#define NNCacheGetCheckIsExistSQLStringKey(table)   [@"NNCacheGetCheckIsExistSQLString" stringByAppendingString:table]
+#define NNCacheGetCheckIsExistIDSQLStringKey(table) [@"NNCacheGetCheckIsExistIDSQLString" stringByAppendingString:table]
+#define NNCacheGetCheckIsChangeSQLStringKey(table)  [@"NNCacheGetCheckIsChangeSQLString" stringByAppendingString:table]
+#define NNCacheGetUpSQLStringKey(table)             [@"NNCacheGetUpSQLString" stringByAppendingString:table]
+
+
+
+FMDatabase * NNDB;
 
 @interface NNCacheData()<NSCopying,NSMutableCopying>
-@property (nonatomic , strong) FMDatabase *db;
 /**
  说有页面的页面字典 代替静态变量
  */
 @property (nonatomic , strong) NSMutableDictionary *allPageDict;
+
+/**
+ 所有table的insert语句
+ */
+@property (nonatomic , strong) NSMutableDictionary *allInsertSQLStringDict;
+
+/**
+ 所有table的insertkey语句
+ */
+@property (nonatomic , strong) NSMutableDictionary *allInsertSQLKeysDict;
+
+/**
+ 所有table的检测是否存在语句
+ */
+@property (nonatomic , strong) NSMutableDictionary *allCheckIsExistSQLStringDict;
+/**
+ 所有table的检测是否存在keys语句
+ */
+@property (nonatomic , strong) NSMutableDictionary *allCheckIsExistIDSQLStringDict;
+
+@property (nonatomic , strong) NSMutableDictionary *allCheckIsChangeSQLStringDict;
+
+@property (nonatomic , strong) NSMutableDictionary *allUpSQLStringDict;
+
 @end
 
 @implementation NNCacheData
 static NNCacheData *instance;
-
-- (FMDatabase *)db
+#pragma mark - init
+- (id)copyWithZone:(NSZone *)zone
 {
-    if (!_db) {
-        [self crateFMDBFile];
-    }
-    return _db;
+    return instance;
+}
+- (id)mutableCopyWithZone:(NSZone *)zone
+{
+    return instance;
+}
++ (instancetype)shareManager
+{
+    return [self new];
+}
++ (instancetype)allocWithZone:(struct _NSZone *)zone
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        if (!instance) {
+            instance = [super allocWithZone:zone];
+            [self retsetTempVar];
+            [instance isNewDataBaseVersion];
+            [instance crateFMDBFile];
+        }
+    });
+    return instance;
+}
++ (void)retsetTempVar
+{
+    instance.allPageDict                    = [NSMutableDictionary dictionary];
+    instance.allInsertSQLStringDict         = [NSMutableDictionary dictionary];
+    instance.allInsertSQLKeysDict           = [NSMutableDictionary dictionary];
+    instance.allCheckIsExistIDSQLStringDict = [NSMutableDictionary dictionary];
+    instance.allCheckIsExistSQLStringDict   = [NSMutableDictionary dictionary];
+    instance.allCheckIsChangeSQLStringDict  = [NSMutableDictionary dictionary];
+    instance.allUpSQLStringDict             = [NSMutableDictionary dictionary];
 }
 - (void)crateFMDBFile
 {
     NSString *docsPath = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
     NSString *dbPath   = [docsPath stringByAppendingPathComponent:@"NNCacheData.db"];
-    _db     = [FMDatabase databaseWithPath:dbPath];
+    NNDB     = [FMDatabase databaseWithPath:dbPath];
     NSLog(@"%@",dbPath);
 }
+#pragma mark - Version
 -(void)deleteFMDBFile
 {
-    //自己禁止删除数据库
-    
-//    return;
-    
     NSFileManager* fileManager=[NSFileManager defaultManager];
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
     //文件名
@@ -70,7 +127,6 @@ static NNCacheData *instance;
     BOOL blHave=[[NSFileManager defaultManager] fileExistsAtPath:uniquePath];
     if (!blHave) {
         NSLog(@"no  have");
-        return ;
     }else {
         NSLog(@" have");
         BOOL blDele= [fileManager removeItemAtPath:uniquePath error:nil];
@@ -81,6 +137,21 @@ static NNCacheData *instance;
         }else {
             NSLog(@"dele fail");
         }
+    }
+    
+    //userdefault clearn
+    @synchronized (self) {
+        NSString *allTablesName = [[NSUserDefaults standardUserDefaults] stringForKey:NNAllTablesNameUserDefault];
+        if (allTablesName.length) {
+            NSArray *tableNameArr = [allTablesName componentsSeparatedByString:@","];
+            for (NSString *tableName in tableNameArr) {
+                for (NSString *obj in @[NNCacheGetInsertSQLStringKey(tableName),NNCacheGetInsertSQLKeysKey(tableName),NNCacheGetCheckIsExistSQLStringKey(tableName),NNCacheGetCheckIsExistIDSQLStringKey(tableName),NNCacheGetCheckIsChangeSQLStringKey(tableName),NNCacheGetUpSQLStringKey(tableName)]) {
+                    [[NSUserDefaults standardUserDefaults] setObject:nil forKey:obj];
+                }
+            }
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+        [NNCacheData retsetTempVar];
     }
 }
 /**
@@ -101,32 +172,82 @@ static NNCacheData *instance;
         [[NSUserDefaults standardUserDefaults] setObject:app_Version forKey:@"NNCacheDataVersionUserDefault"];
     }
 }
-- (id)copyWithZone:(NSZone *)zone
+#pragma mark - SQLString
++ (NSString *)getTabelUpSQLStringWithTableName:(NSString *)tableName
 {
-    return instance;
-}
-- (id)mutableCopyWithZone:(NSZone *)zone
-{
-    return instance;
-}
-+ (instancetype)shareManager
-{
-    return [self new];
-}
-+ (instancetype)allocWithZone:(struct _NSZone *)zone
-{
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        if (!instance) {
-            instance = [super allocWithZone:zone];
-            instance.allPageDict = [NSMutableDictionary dictionary];
-            [instance isNewDataBaseVersion];
+    NSString *upSQLString = ((NNCacheData *)[self shareManager]).allUpSQLStringDict[tableName];
+    if (!upSQLString.length) {
+        upSQLString = [[NSUserDefaults standardUserDefaults] objectForKey:NNCacheGetUpSQLStringKey(tableName)];
+        if (upSQLString.length) {
+            [((NNCacheData *)[self shareManager]).allUpSQLStringDict setObject:upSQLString forKey:tableName];
         }
-    });
-    return instance;
+    }
+    return upSQLString;
 }
++ (NSString *)getTabelCheckIsChangeSQLStringWithTableName:(NSString *)tableName
+{
+    NSString *checkIsChangeString = ((NNCacheData *)[self shareManager]).allCheckIsChangeSQLStringDict[tableName];
+    if (!checkIsChangeString.length) {
+        checkIsChangeString = [[NSUserDefaults standardUserDefaults] objectForKey:NNCacheGetCheckIsChangeSQLStringKey(tableName)];
+        if (checkIsChangeString.length) {
+            [((NNCacheData *)[self shareManager]).allCheckIsChangeSQLStringDict setObject:checkIsChangeString forKey:tableName];
+        }
+    }
+    return checkIsChangeString;
+}
++ (NSString *)getTabelCheckIsExistIDSQLStringWithTableName:(NSString *)tableName
+{
+    NSString *checkIsExistIDString = ((NNCacheData *)[self shareManager]).allCheckIsExistIDSQLStringDict[tableName];
+    if (!checkIsExistIDString.length) {
+        checkIsExistIDString = [[NSUserDefaults standardUserDefaults] objectForKey:NNCacheGetCheckIsExistIDSQLStringKey(tableName)];
+        if (checkIsExistIDString.length) {
+            [((NNCacheData *)[self shareManager]).allCheckIsExistIDSQLStringDict setObject:checkIsExistIDString forKey:tableName];
+        }
+    }
+    return checkIsExistIDString;
+}
++ (NSString *)getTableCheckIsExistSQLStringWithTableName:(NSString *)tableName
+{
+    NSString *existSQLString = ((NNCacheData *)[self shareManager]).allCheckIsExistSQLStringDict[tableName];
+    
+    if (!existSQLString.length) {
+        //没有找到
+        //userdefault
+        existSQLString = [[NSUserDefaults standardUserDefaults] stringForKey:NNCacheGetCheckIsExistSQLStringKey(tableName)];
+        if (existSQLString.length) {
+            [((NNCacheData *)[self shareManager]).allCheckIsExistSQLStringDict setObject:existSQLString forKey:tableName];
+        }
+    }
+    return existSQLString;
+}
++ (NSArray *)getTabelInsetSQLKeysWithTableName:(NSString *)tableName
+{
+    NSArray *insertKeyArr = ((NNCacheData *)[self shareManager]).allInsertSQLKeysDict[tableName];
+    if (!insertKeyArr.count) {
+         insertKeyArr = [[NSUserDefaults standardUserDefaults] objectForKey:NNCacheGetInsertSQLKeysKey(tableName)];
+        if (insertKeyArr.count) {
+            [((NNCacheData *)[self shareManager]).allInsertSQLKeysDict setObject:insertKeyArr forKey:tableName];
+        }
+    }
+    return insertKeyArr;
+}
++ (NSString *)getTableInsertSQLStringWithTableName:(NSString *)tableName
+{
+    NSString *insetSQLString = ((NNCacheData *)[self shareManager]).allInsertSQLStringDict[tableName];
+    
+    if (!insetSQLString.length) {
+        //没有找到
+        //userdefault
+        insetSQLString = [[NSUserDefaults standardUserDefaults] stringForKey:NNCacheGetInsertSQLStringKey(tableName)];
+        if (insetSQLString.length) {
+            [((NNCacheData *)[self shareManager]).allInsertSQLStringDict setObject:insetSQLString forKey:tableName];
+        }
+    }
+    return insetSQLString;
+}
+
 /**
- 把对象用字符串的格式保存  
+ 把对象用字符串的格式保存
  统一用空字符串来表示缺省值
  */
 + (NSString *)checkContentNotNull:(NSString *)content
@@ -236,145 +357,206 @@ static NNCacheData *instance;
     }
     complete(propertyNameArrM,propertyTypeArrM);
 }
++ (void)getCreateSQLStringWithData:(id)data dictData:(NSDictionary *)dictData tableName:(NSString *)tableName complete:(void(^)(NSString *createProperty,NSString *insertProperty,NSString *insertQuestion,NSArray *insertSortKeyArr))complete
+{
+    //判断取出key 和转成json文件
+    __block NSArray *allKeys;
+    __block NSArray *types;
+    //判断用户是否已经构建了
+    //你可以传入dict数据过来，但是你要保证第一次是正常的，
+    //对模型进行转化成字典，取出key对应的value
+    if ([data isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"NNCacheData__你可以传入dict数据过来，但是你要保证第一次你需要的所用字段都是有数据的，不然数据库是不会创建的,很难保证，你可以传入模型，他是安全的，可以使用指定参数名方法创建的方法");
+        allKeys = ((NSDictionary *)data).allKeys;
+        //那了下呢
+        NSDictionary *dict = data;
+        NSMutableArray *typesM = [NSMutableArray array];
+        NSLog(@"%@",dict);
+        [dict enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
+            [typesM addObject:[self propertyTypeWithObject:obj]];
+        }];
+        types = typesM;
+    }else {
+        //runtime 获取参数名 和 类型
+        [self getClassPropertyArr:[data class] complete:^(NSArray *propertyNameArr, NSArray *propertyTypeArr) {
+            allKeys = propertyNameArr;
+            types   = propertyTypeArr;
+        }];
+    }
+    
+    //按照字符串的格式保存
+    NSMutableString *createPropertyM = [@"" mutableCopy];
+    NSMutableString *insertPropertyM = [@"" mutableCopy];
+    NSMutableString *insertQuestionM = [@"" mutableCopy];
+    NSMutableArray  *insertSortKeyArrM = [@[] mutableCopy];
+    
+    //看看类型数组是否有数据 没有只能默认为text创建数据库
+    for (int i = 0; i < types.count; i++) {
+        NSString *key = allKeys[i];
+        NSString *type = types[i];
+        //帮你过滤
+        if (!key.length) {
+            continue;
+        }
+        //你已经把这里写成了text了，写死了 应该是要活的
+        //这样如果 获取我以为什么都可以用
+        //直接去掉字典，模型来 ，也可以 字典喜欢 ，但是不知道类型
+        //必须使用真实值 假的不要
+        [createPropertyM appendFormat:@"%@ %@,",key,type];
+        [insertPropertyM appendFormat:@"'%@',",key];
+        [insertQuestionM appendString:@"?,"];
+        [insertSortKeyArrM addObject:key];
+    }
+    
+    //删除最后一个字符
+    [createPropertyM deleteCharactersInRange:NSMakeRange(createPropertyM.length-1, 1)];
+    [insertPropertyM deleteCharactersInRange:NSMakeRange(insertPropertyM.length-1, 1)];
+    [insertQuestionM deleteCharactersInRange:NSMakeRange(insertQuestionM.length-1, 1)];
+    
+    complete(createPropertyM,insertPropertyM,insertQuestionM,insertSortKeyArrM);
+}
+#pragma mark - Main
 + (void)NNUpdata:(id)data
        tableName:(NSString *)tableName
 IDPropertysNameArr:(NSArray *)IDPropertysNameArr
 compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameArr
         complete:(void(^)(BOOL isNew))complete
 {
-    //等下我要加固我的框架 （：
     @try {
-        if ([data isKindOfClass:[NSNull class]]) return;
-            
-        if (data==nil) return;
-        
-        if (!tableName.length) return;
-        
+        if (!NNDB) {
+            [self shareManager];
+        }
         if (![NNDB open]) {
             NSLog(@"open sqlt error");
             return;
         }
-        //判断取出key 和转成json文件
-        __block NSArray *allKeys;
-        __block NSArray *types;
-        //判断用户是否已经构建了
-        //你可以传入dict数据过来，但是你要保证第一次是正常的，
-        //对模型进行转化成字典，取出key对应的value
         NSDictionary *dictData;
         if ([data isKindOfClass:[NSDictionary class]]) {
             dictData = data;
-            NSLog(@"NNCacheData__你可以传入dict数据过来，但是你要保证第一次你需要的所用字段都是有数据的，不然数据库是不会创建的,很难保证，你可以传入模型，他是安全的，可以使用指定参数名方法创建的方法");
-            allKeys = ((NSDictionary *)data).allKeys;
-            //那了下呢
-            NSDictionary *dict = data;
-            NSMutableArray *typesM = [NSMutableArray array];
-            NSLog(@"%@",dict);
-            [dict enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
-                [typesM addObject:[self propertyTypeWithObject:obj]];
-            }];
-            types = typesM;
         }else {
             dictData = ((NNCacheData *)data).mj_keyValues;
-            //runtime 获取参数名 和 类型
-            [self getClassPropertyArr:[data class] complete:^(NSArray *propertyNameArr, NSArray *propertyTypeArr) {
-                allKeys = propertyNameArr;
-                types   = propertyTypeArr;
+        }
+        
+        //我会把那就话缓存起来 就不会允许这段代码了
+        //刀刃上 userfefault
+        NSString *insetSQLString  = [self getTableInsertSQLStringWithTableName:tableName];
+        NSArray *insertSortKeyArr = [self getTabelInsetSQLKeysWithTableName:tableName];
+        if (!insetSQLString.length) {
+            //进行创建数据库
+            __block NSString *insetSQLStringTemp;
+            __block NSArray  *insertSortKeyArrTemp;
+            
+            [self getCreateSQLStringWithData:data dictData:dictData tableName:tableName complete:^(NSString *createProperty, NSString *insertProperty, NSString *insertQuestion,NSArray *insertSortKeyArray) {
+                
+                @synchronized (self) {
+                    //create
+                    if (![NNDB executeUpdate:[NSString stringWithFormat:@"create table if not exists %@ (%@)",tableName,createProperty]]) {
+                        NSLog(@"crete table error ");
+                        return ;
+                    }
+                    
+                    //缓存数据库语句
+                    //insert
+                    NSString *insertString = [NSString stringWithFormat:@"insert into %@ (%@) values (%@)",tableName,insertProperty,insertQuestion];
+                    [((NNCacheData *)[self shareManager]).allInsertSQLStringDict setObject:insertString forKey:tableName];
+                    [[NSUserDefaults standardUserDefaults] setObject:insertString forKey:NNCacheGetInsertSQLStringKey(tableName)];
+                    
+                    
+                    [((NNCacheData *)[self shareManager]).allInsertSQLKeysDict setObject:insertSortKeyArray forKey:tableName];
+                    [[NSUserDefaults standardUserDefaults] setObject:insertSortKeyArray forKey:NNCacheGetInsertSQLKeysKey(tableName)];
+                    
+                    //记录所有表名
+                    NSString *allTablesName = [[NSUserDefaults standardUserDefaults] stringForKey:NNAllTablesNameUserDefault];
+                    if (allTablesName.length) {
+                        [allTablesName stringByAppendingFormat:@",%@",tableName];
+                    }else {
+                        allTablesName = tableName;
+                    }
+                    [[NSUserDefaults standardUserDefaults] setObject:allTablesName forKey:NNAllTablesNameUserDefault];
+                    
+                    [[NSUserDefaults standardUserDefaults] synchronize];
+                    insetSQLStringTemp = insertString;
+                    insertSortKeyArrTemp = insertSortKeyArray;
+                }
             }];
+            
+            insetSQLString = insetSQLStringTemp;
+            insertSortKeyArr = insertSortKeyArrTemp;
         }
         
-        //create
-        if (!allKeys.count) return;
         
-        //按照字符串的格式保存
-        NSMutableString *createPropertyM = [@"" mutableCopy];
-        NSMutableString *insertPropertyM = [@"" mutableCopy];
-        NSMutableString *insertQuestionM = [@"" mutableCopy];
-        
-        //sql语句通过数组方式添加
-        NSMutableArray *insertContentM  = [@[] mutableCopy];
-        
-        //看看类型数组是否有数据 没有只能默认为text创建数据库
-        for (int i = 0; i < types.count; i++) {
-            NSString *key = allKeys[i];
-            NSString *type = types[i];
-            //帮你过滤
-            if (!key.length) {
-                continue;
+        //check is exist
+        NSString *checkExistSql   = [self getTableCheckIsExistSQLStringWithTableName:tableName];
+        if (!checkExistSql.length) {
+            //没有就生成
+            //noraml compare
+            //检测是否有重复
+            NSMutableString *normalCompareNameStringM = [@"" mutableCopy];
+            for (NSString *obj in IDPropertysNameArr) {
+                [normalCompareNameStringM appendFormat:@"%@ = ? and ",obj];
             }
-            //你已经把这里写成了text了，写死了 应该是要活的
-            //这样如果 获取我以为什么都可以用
-            //直接去掉字典，模型来 ，也可以 字典喜欢 ，但是不知道类型
-            //必须使用真实值 假的不要
-            [createPropertyM appendFormat:@"%@ %@,",key,type];
-            [insertPropertyM appendFormat:@"'%@',",key];
-            [insertQuestionM appendString:@"?,"];
+            //有时是不会开启检测功能的
+            if (normalCompareNameStringM.length > 4) {
+                [normalCompareNameStringM deleteCharactersInRange:NSMakeRange(normalCompareNameStringM.length-4, 4)];
+            }
             
-            //mj 会自动过来掉值为空的情况，留下有值的
-            id content = dictData[key];
-            //这里正是我使用明确的key所要解决的问题，如果我过滤他们，他们将不会创建
-            //一般我使用最多的是NSString 和 CGFloat 只有 处理一下就好 默认 @"" 和 0
-            //如何获取到他的类型呢
-            //到这来 防控处理就有用了
-            content = [self checkContentNotNull:content];
-            [insertContentM addObject:content];
+            NSString *checkEqualSql = [NSString stringWithFormat:@"select * from %@ where (%@)",tableName,normalCompareNameStringM];
+            checkExistSql = checkEqualSql;
+            @synchronized (self) {
+                [((NNCacheData*)[self shareManager]).allCheckIsExistSQLStringDict setObject:checkEqualSql forKey:tableName];
+                [[NSUserDefaults standardUserDefaults] setObject:checkEqualSql forKey:NNCacheGetCheckIsExistSQLStringKey(tableName)];
+                
+                [((NNCacheData*)[self shareManager]).allCheckIsExistIDSQLStringDict setObject:normalCompareNameStringM forKey:tableName];
+                [[NSUserDefaults standardUserDefaults] setObject:normalCompareNameStringM forKey:NNCacheGetCheckIsExistIDSQLStringKey(tableName)];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+            }
         }
         
-        //删除最后一个字符
-        [createPropertyM deleteCharactersInRange:NSMakeRange(createPropertyM.length-1, 1)];
-        [insertPropertyM deleteCharactersInRange:NSMakeRange(insertPropertyM.length-1, 1)];
-        [insertQuestionM deleteCharactersInRange:NSMakeRange(insertQuestionM.length-1, 1)];
-        
-        if (![NNDB executeUpdate:[NSString stringWithFormat:@"create table if not exists %@ (%@)",tableName,createPropertyM]]) {
-            NSLog(@"crete table error ");
-            return ;
-        }
-        
-        //noraml compare
-        //检测是否有重复
-        NSMutableString *normalCompareNameStringM = [@"" mutableCopy];
         NSMutableArray *normalCompareContentM = [@[] mutableCopy];
-        for (NSString *obj in IDPropertysNameArr) {
-            [normalCompareNameStringM appendFormat:@"%@ = ? and ",obj];
-            
-            NSString *content = dictData[obj];
+        for (NSString *key in IDPropertysNameArr) {
+            NSString *content = dictData[key];
             [normalCompareContentM addObject:content];
         }
-        //有时是不会开启检测功能的
-        if (normalCompareNameStringM.length > 4) {
-            [normalCompareNameStringM deleteCharactersInRange:NSMakeRange(normalCompareNameStringM.length-4, 4)];
-        }
         
         
-        NSString *checkEqualSql = [NSString stringWithFormat:@"select * from %@ where (%@)",tableName,normalCompareNameStringM];
-        FMResultSet *compareRs = [NNDB executeQuery:checkEqualSql withArgumentsInArray:normalCompareContentM];
+        FMResultSet *compareRs = [NNDB executeQuery:checkExistSql withArgumentsInArray:normalCompareContentM];
         
-        
-        //
-        //hige compare
-        //主要是用于更新数据库
-        //这几个数据都是动态的
         if ([compareRs next]) {
             
             if (compareChangeRefrshPropertysNameArr.count) {
                 
-                NSMutableString *higeCompareStrM = [@"" mutableCopy];
-                NSMutableArray *higeCompleteContentArrM = [@[] mutableCopy];
+                NSString *checkIsChangeSQLString = [self getTabelCheckIsChangeSQLStringWithTableName:tableName];
+                if (!checkIsChangeSQLString.length) {
+                    NSMutableString *higeCompareStrM = [@"" mutableCopy];
+                    NSMutableArray *compareChangeRefrshPropertysNameArrTemp = [IDPropertysNameArr mutableCopy];
+                    [compareChangeRefrshPropertysNameArrTemp addObjectsFromArray:compareChangeRefrshPropertysNameArr];
+                    for (NSString *obj in compareChangeRefrshPropertysNameArrTemp) {
+                        [higeCompareStrM appendFormat:@"%@ = ? and ",obj];
+                    }
+                    if (higeCompareStrM.length > 4) {
+                        [higeCompareStrM deleteCharactersInRange:NSMakeRange(higeCompareStrM.length-4, 4)];
+                    }
+                    NSString *higeCheckEqualSql = [NSString stringWithFormat:@"select *from %@ where (%@)",tableName,higeCompareStrM];
+                    checkIsChangeSQLString = higeCheckEqualSql;
+                    
+                    @synchronized (self) {
+                        [((NNCacheData *)[self shareManager]).allCheckIsChangeSQLStringDict setObject:checkIsChangeSQLString forKey:tableName];
+                        [[NSUserDefaults standardUserDefaults] setObject:checkIsChangeSQLString forKey:NNCacheGetCheckIsChangeSQLStringKey(tableName)];
+                        [[NSUserDefaults standardUserDefaults] synchronize];
+                    }
+                    
+                }
                 
+                NSMutableArray *higeCompleteContentArrM = [@[] mutableCopy];
                 NSMutableArray *compareChangeRefrshPropertysNameArrTemp = [IDPropertysNameArr mutableCopy];
                 [compareChangeRefrshPropertysNameArrTemp addObjectsFromArray:compareChangeRefrshPropertysNameArr];
-                for (NSString *obj in compareChangeRefrshPropertysNameArrTemp) {
-                    [higeCompareStrM appendFormat:@"%@ = ? and ",obj];
-                    
-                    NSString *content = dictData[obj];
+                for (NSString *key in compareChangeRefrshPropertysNameArrTemp) {
+                    NSString *content = dictData[key];
                     content = [self checkContentNotNull:content];
                     [higeCompleteContentArrM addObject:content];
                 }
-                if (higeCompareStrM.length > 4) {
-                    [higeCompareStrM deleteCharactersInRange:NSMakeRange(higeCompareStrM.length-4, 4)];
-                }
-                NSString *higeCheckEqualSql = [NSString stringWithFormat:@"select *from %@ where (%@)",tableName,higeCompareStrM];
                 
-                FMResultSet *higeRs = [NNDB executeQuery:higeCheckEqualSql withArgumentsInArray:higeCompleteContentArrM];
+                FMResultSet *higeRs = [NNDB executeQuery:checkIsChangeSQLString withArgumentsInArray:higeCompleteContentArrM];
                 
                 if ([higeRs next]) {
                     if (complete) {
@@ -383,37 +565,50 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
                     return;
                 }else {
                     //数据已更新 需要刷新数据库 会刷新到深度比较的字段
-                    NSMutableString *updateStrM = [@"" mutableCopy];
-                    NSMutableArray *updateContentArrM = [@[] mutableCopy];
-                    //更新库里的说有数据
-                    //给出什么 就更新什么，
-                    for (NSString *obj in compareChangeRefrshPropertysNameArr) {
-                        [updateStrM appendFormat:@"%@ = ?,",obj];
+                    NSString *upSQLString = [self getTabelUpSQLStringWithTableName:tableName];
+                    if (!upSQLString.length) {
+                        NSMutableString *updateStrM = [@"" mutableCopy];
+                        //更新库里的说有数据
+                        //给出什么 就更新什么，
+                        for (NSString *obj in compareChangeRefrshPropertysNameArr) {
+                            [updateStrM appendFormat:@"%@ = ?,",obj];
+                        }
+                        [updateStrM deleteCharactersInRange:NSMakeRange(updateStrM.length-1, 1)];
+                        NSString *checkExistIDSql = [self getTabelCheckIsExistIDSQLStringWithTableName:tableName];
                         
+                        //使用检测的内容来定位到数据
+                        NSString *updateSql = [NSString stringWithFormat:@"update %@ set %@ where %@",tableName,updateStrM,checkExistIDSql];
+                        upSQLString = updateSql;
+                        
+                        @synchronized (self) {
+                            [((NNCacheData*)[self shareManager]).allUpSQLStringDict setObject:upSQLString forKey:tableName];
+                            [[NSUserDefaults standardUserDefaults] setObject:upSQLString forKey:NNCacheGetUpSQLStringKey(tableName)];
+                            [[NSUserDefaults standardUserDefaults] synchronize];
+                        }
+                        
+                    }
+                    
+                    NSMutableArray *updateContentArrM = [@[] mutableCopy];
+                    for (NSString *obj in compareChangeRefrshPropertysNameArr) {
                         NSString *content = dictData[obj];
                         content = [self checkContentNotNull:content];
                         [updateContentArrM addObject:content];
                     }
-                    [updateStrM deleteCharactersInRange:NSMakeRange(updateStrM.length-1, 1)];
-                    
-                    //使用检测的内容来定位到数据
-                    NSString *updateSql = [NSString stringWithFormat:@"update %@ set %@ where %@",tableName,updateStrM,normalCompareNameStringM];
                     [updateContentArrM addObjectsFromArray:normalCompareContentM];
                     
-                    if ([NNDB executeUpdate:updateSql withArgumentsInArray:updateContentArrM]) {
+                    if ([NNDB executeUpdate:upSQLString withArgumentsInArray:updateContentArrM]) {
                         //刷新成功
                         if (complete) {
                             complete(YES);
                         }
-                        
+                        return;
                     }else {
-                        NSAssert(1, @"新数据更新不成功!");
+                        NSLog(@"新数据更新不成功!");
                         if (complete) {
-                            complete(-1);
+                            complete(NO);
                         }
-                        
+                        return;
                     }
-                    return;
                 }
             }else {
                 //不用深度比较
@@ -425,21 +620,20 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
             }
         }
         
-        //update
-        NSString *insertString = [NSString stringWithFormat:@"insert into %@ (%@) values (%@)",tableName,insertPropertyM,insertQuestionM];
         //insert
-        //系统会对后面的数据作为 语句 系统匹配多个
-        //存储字符串dict
-        //改库
-        
-        if (![NNDB executeUpdate:insertString withArgumentsInArray:insertContentM]) {
+        NSMutableArray *insertContentM  = [@[] mutableCopy];
+        for (NSString *key in insertSortKeyArr) {
+            id content = dictData[key];
+            content = [self checkContentNotNull:content];
+            [insertContentM addObject:content];
+        }
+        if (![NNDB executeUpdate:insetSQLString withArgumentsInArray:insertContentM]) {
             NSLog(@"insert error");
             return;
         }
         if (complete) {
             complete(YES);
         }
-        
     } @catch (NSException *exception) {
         NSLog(@"数据库未知异常");
         if (complete) {
@@ -469,6 +663,9 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
                  complete:(void(^)(BOOL isDelect))complete
 {
     @try {
+        if (!NNDB) {
+            [self shareManager];
+        }
         if (0==tableName.length) return;
         //如果缺失 无法指定
         if (0 == IDPropertysNameArr.count) {
@@ -486,7 +683,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
         if (![NNDB open]) {
             NSLog(@"open error");
             if(complete) {
-               complete(NO);
+                complete(NO);
             }
             return;
         }
@@ -534,7 +731,9 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
 + (void)NNDelectTableWithTableName:(NSString *)tableName complete:(void(^)())complete
 {
     if (0 == tableName.length) return;
-    
+    if (!NNDB) {
+        [self shareManager];
+    }
     if (![NNDB open])
     {
         if (complete) {
@@ -559,7 +758,9 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
 + (void)NNGetDataTableName:(NSString *)tableName isGetFirstData:(BOOL)isGetFirstData sortSqlString:(NSString *)sortSqlString pickDataClassName:(NSString *)pickDataClassName complete:(void(^)(NSArray *dataArr))complete
 {
     @try {
-        
+        if (!NNDB) {
+            [self shareManager];
+        }
         if (![NNDB open]) {
             NSLog(@"open error");
             complete(@[]);
@@ -608,7 +809,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
         if (complete) {
             complete(arrM);
         }
-
+        
     } @catch (NSException *exception) {
         NSLog(@"数据库解析异常");
         complete(@[]);
