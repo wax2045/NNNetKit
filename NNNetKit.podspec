@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'NNNetKit'
-  s.version          = '0.0.3'
+  s.version          = '0.0.4'
   s.summary          = 'A short description of NNNetKit.'
 
 # This description is used to generate tags and improve search results.
@@ -39,5 +39,5 @@ TODO: Add long description of the pod here.
   # s.frameworks = 'UIKit', 'MapKit'
   s.dependency 'AFNetworking'
   s.dependency 'FMDB'
-  s.dependency 'MJExtension'
+  s.dependency 'YYModel'
 end

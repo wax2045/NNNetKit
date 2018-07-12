@@ -16,7 +16,7 @@
  */
 #import "NNCacheData.h"
 #import "FMDB.h"
-#import "MJExtension.h"
+#import "YYModel.h"
 #import <objc/runtime.h>
 
 
@@ -434,7 +434,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
         if ([data isKindOfClass:[NSDictionary class]]) {
             dictData = data;
         }else {
-            dictData = ((NNCacheData *)data).mj_keyValues;
+            dictData = ((NNCacheData *)data).yy_modelToJSONObject;
         }
         
         //我会把那就话缓存起来 就不会允许这段代码了
@@ -689,7 +689,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
         }
         NSDictionary *dictData;
         if (![delectData isKindOfClass:[NSDictionary class]]) {
-            dictData = [((NSString *)delectData) mj_keyValues];
+            dictData = [((NSString *)delectData) yy_modelToJSONObject];
         }else {
             dictData = delectData;
         }
@@ -790,7 +790,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
             //处理字典
             
             NSDictionary *dict= rss.resultDictionary;
-            id obj = (pickDataClassName.length)?[NSClassFromString(pickDataClassName) mj_objectWithKeyValues:dict]:dict;
+            id obj = (pickDataClassName.length)?[NSClassFromString(pickDataClassName) yy_modelWithDictionary:dict]:dict;
             if (obj) {
                 [arrM addObject:obj];
             }
