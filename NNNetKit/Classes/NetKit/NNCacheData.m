@@ -468,7 +468,7 @@ compareChangeRefrshPropertysNameArr:(NSArray *)compareChangeRefrshPropertysNameA
                     //记录所有表名
                     NSString *allTablesName = [[NSUserDefaults standardUserDefaults] stringForKey:NNAllTablesNameUserDefault];
                     if (allTablesName.length) {
-                        [allTablesName stringByAppendingFormat:@",%@",tableName];
+                        allTablesName = [allTablesName stringByAppendingFormat:@",%@",tableName];
                     }else {
                         allTablesName = tableName;
                     }
